@@ -1,0 +1,60 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        php: [8.0, 8.1, 8.2, 8.3]
+        laravel: [9.0, 10.0, 11.0]
+        
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php }}
+        extensions: mbstring, dom, fileinfo, mysql, sqlite, pgsql, redis, memcached
+        coverage: none
+        
+    - name: Get composer cache directory
+      id: composer-cache
+      run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      
+    - name: Cache composer dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+        
+    - name: Install dependencies
+      run: composer install --prefer-dist --no-progress --no-suggest
+      
+    - name: Create Laravel project
+      run: |
+        composer create-project laravel/laravel test-laravel-project --prefer-dist --no-interaction
+        cd test-laravel-project
+        composer require laravel-dump/mac-viewer --dev
+        
+    - name: Run tests
+      run: |
+        cd test-laravel-project
+        php artisan laravel-dump:setup --test
+        
+    - name: Test helper functions
+      run: |
+        cd test-laravel-project
+        php -r "
+        require_once 'laravel-dump-helper.php';
+        app_dump('Test from GitHub Actions');
+        echo 'Helper functions working correctly!';
+        "
